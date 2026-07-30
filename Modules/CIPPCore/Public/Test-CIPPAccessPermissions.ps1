@@ -25,7 +25,6 @@ function Test-CIPPAccessPermissions {
     }
     $Success = $true
     try {
-        Set-Location (Get-Item $PSScriptRoot).FullName
         $null = Get-CIPPAuthentication
         $GraphToken = Get-GraphToken -returnRefresh $true -SkipCache $true
         if ($GraphToken) {
@@ -33,7 +32,7 @@ function Test-CIPPAccessPermissions {
         }
         if ($env:MSI_SECRET) {
             try {
-                $KV = $env:WEBSITE_DEPLOYMENT_ID
+                $KV = Get-CippKeyVaultName
                 $KeyVaultRefresh = Get-CippKeyVaultSecret -VaultName $kv -Name 'RefreshToken' -AsPlainText
                 if ($env:RefreshToken -ne $KeyVaultRefresh) {
                     $Success = $false
@@ -116,11 +115,6 @@ function Test-CIPPAccessPermissions {
                 }
             }
             $Success = $false
-            $Links.Add([PSCustomObject]@{
-                    Text = 'Permissions'
-                    Href = 'https://docs.cipp.app/setup/installation/permissions'
-                }
-            ) | Out-Null
         } else {
             $Messages.Add('You have all the required permissions.') | Out-Null
         }

@@ -38,10 +38,9 @@ function Set-CippKeyVaultSecret {
     try {
         # Derive vault name if not provided
         if (-not $VaultName) {
-            if ($env:WEBSITE_DEPLOYMENT_ID) {
-                $VaultName = ($env:WEBSITE_DEPLOYMENT_ID -split '-')[0]
-            } else {
-                throw "VaultName not provided and WEBSITE_DEPLOYMENT_ID environment variable not set"
+            $VaultName = Get-CippKeyVaultName
+            if (-not $VaultName) {
+                throw 'VaultName not provided and could not be derived (WEBSITE_SITE_NAME / WEBSITE_DEPLOYMENT_ID not set)'
             }
         }
 
@@ -56,7 +55,7 @@ function Set-CippKeyVaultSecret {
 
         # Call Key Vault REST API
         $uri = "https://$VaultName.vault.azure.net/secrets/$Name`?api-version=7.4"
-        $response = Invoke-RestMethod -Uri $uri -Headers @{
+        $response = Invoke-CIPPRestMethod -Uri $uri -Headers @{
             Authorization = "Bearer $token"
             'Content-Type' = 'application/json'
         } -Method Put -Body $body -ErrorAction Stop

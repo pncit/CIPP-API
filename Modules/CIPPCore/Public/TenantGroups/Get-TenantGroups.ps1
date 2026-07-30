@@ -1,17 +1,3 @@
-if (-not $script:TenantGroupsCache) {
-    $script:TenantGroupsCache = @{
-        Groups         = $null
-        Members        = $null
-        LastRefresh    = $null
-        MembersByGroup = $null  # Dictionary: GroupId -> members array
-    }
-}
-
-# Result cache: keyed by "GroupId|TenantFilter|Dynamic"
-if (-not $script:TenantGroupsResultCache) {
-    $script:TenantGroupsResultCache = @{}
-}
-
 function Get-TenantGroups {
     <#
     .SYNOPSIS
@@ -30,11 +16,30 @@ function Get-TenantGroups {
     param(
         [string]$GroupId,
         [string]$TenantFilter,
-        [switch]$Dynamic
+        [switch]$Dynamic,
+        [switch]$SkipCache
     )
+
+    if (-not $script:TenantGroupsCache) {
+        $script:TenantGroupsCache = @{
+            Groups         = $null
+            Members        = $null
+            LastRefresh    = $null
+            MembersByGroup = $null
+        }
+    }
+    if (-not $script:TenantGroupsResultCache) {
+        $script:TenantGroupsResultCache = @{}
+    }
+    if (-not $script:TenantGroupsCacheTTL) {
+        $script:TenantGroupsCacheTTL = (New-TimeSpan -Minutes 5)
+    }
+
     $CacheKey = "$GroupId|$TenantFilter|$($Dynamic.IsPresent)"
 
-    if ($script:TenantGroupsResultCache.ContainsKey($CacheKey)) {
+    if ($SkipCache) {
+        Write-Verbose "Skipping cache for: $CacheKey"
+    } elseif ($script:TenantGroupsResultCache.ContainsKey($CacheKey)) {
         Write-Verbose "Returning cached result for: $CacheKey"
         return $script:TenantGroupsResultCache[$CacheKey]
     }
@@ -46,8 +51,9 @@ function Get-TenantGroups {
         }
     }
 
-    # Load table data into cache if not already loaded
-    if (-not $script:TenantGroupsCache.Groups -or -not $script:TenantGroupsCache.Members) {
+    # Load table data into cache if not already loaded or expired
+    $CacheExpired = $script:TenantGroupsCache.LastRefresh -and ((Get-Date) - $script:TenantGroupsCache.LastRefresh) -gt $script:TenantGroupsCacheTTL
+    if (-not $script:TenantGroupsCache.Groups -or -not $script:TenantGroupsCache.Members -or $SkipCache -or $CacheExpired) {
         Write-Verbose 'Loading TenantGroups and TenantGroupMembers tables into cache'
 
         $GroupTable = Get-CippTable -tablename 'TenantGroups'
@@ -59,11 +65,15 @@ function Get-TenantGroups {
         $script:TenantGroupsCache.Groups = @(Get-CIPPAzDataTableEntity @GroupTable)
         $script:TenantGroupsCache.Members = @(Get-CIPPAzDataTableEntity @MembersTable)
         $script:TenantGroupsCache.LastRefresh = Get-Date
+        $script:TenantGroupsResultCache = @{}
 
         # Build MembersByGroup index: GroupId -> array of member objects
         $script:TenantGroupsCache.MembersByGroup = @{}
         foreach ($Member in $script:TenantGroupsCache.Members) {
             $GId = $Member.GroupId
+            if (-not $GId) {
+                continue
+            }
             if (-not $script:TenantGroupsCache.MembersByGroup.ContainsKey($GId)) {
                 $script:TenantGroupsCache.MembersByGroup[$GId] = [System.Collections.Generic.List[object]]::new()
             }
@@ -134,6 +144,7 @@ function Get-TenantGroups {
                             Id          = $Group.RowKey
                             Name        = $Group.Name
                             Description = $Group.Description
+                            GroupType   = $Group.GroupType ?? 'static'
                         })
                 }
             }
@@ -153,6 +164,7 @@ function Get-TenantGroups {
             if ($GroupMembers) {
                 foreach ($Member in $GroupMembers) {
                     # Use indexed lookup instead of Where-Object
+                    if (!$Member.customerId) { continue }
                     $Tenant = $TenantByCustomerId[$Member.customerId]
                     if ($Tenant) {
                         $MembersList.Add(@{
@@ -168,13 +180,14 @@ function Get-TenantGroups {
             }
 
             $Results.Add([PSCustomObject]@{
-                    Id           = $Group.RowKey
-                    Name         = $Group.Name
-                    Description  = $Group.Description
-                    GroupType    = $Group.GroupType ?? 'static'
-                    RuleLogic    = $Group.RuleLogic ?? 'and'
-                    DynamicRules = $Group.DynamicRules ? @($Group.DynamicRules | ConvertFrom-Json) : @()
-                    Members      = @($SortedMembers)
+                    Id                   = $Group.RowKey
+                    Name                 = $Group.Name
+                    Description          = $Group.Description
+                    GroupType            = $Group.GroupType ?? 'static'
+                    RuleLogic            = $Group.RuleLogic ?? 'and'
+                    ExcludePartnerTenant = [bool]($Group.ExcludePartnerTenant)
+                    DynamicRules         = $Group.DynamicRules ? @($Group.DynamicRules | ConvertFrom-Json) : @()
+                    Members              = @($SortedMembers)
                 })
         }
 
