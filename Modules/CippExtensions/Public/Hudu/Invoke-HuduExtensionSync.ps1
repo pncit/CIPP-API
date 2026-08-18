@@ -157,7 +157,7 @@ function Invoke-HuduExtensionSync {
 
             $ExistingRelationRows = Get-CIPPAzDataTableEntity @HuduRelationsCache -Filter "PartitionKey eq 'HuduRelation'"
             if ($ExistingRelationRows) {
-                Remove-AzDataTableEntity @HuduRelationsCache -Entity $ExistingRelationRows -Force
+                Remove-CIPPAzDataTableEntity @HuduRelationsCache -Entity $ExistingRelationRows -Force
             }
 
             $RelationEntities = foreach ($Relation in $HuduRelations) {
@@ -780,7 +780,7 @@ function Invoke-HuduExtensionSync {
                     if ($EnableCIPP) {
                         $CIPPLinksFormatted.add((Get-HuduLinkBlock -URL "$($CIPPURL)/identity/administration/users/user?tenantFilter=$($Tenant.defaultDomainName)&userId=$($User.id)" -Icon 'far fa-eye' -Title 'CIPP - View User'))
                         $CIPPLinksFormatted.add((Get-HuduLinkBlock -URL "$($CIPPURL)/identity/administration/users/user/edit?tenantFilter=$($Tenant.defaultDomainName)&userId=$($User.id)" -Icon 'fas fa-user-cog' -Title 'CIPP - Edit User'))
-                        $CIPPLinksFormatted.add((Get-HuduLinkBlock -URL "$($CIPPURL)/identity/administration/users/user/bec?tenantFilter=$($Tenant.defaultDomainName)&userId=$($User.id))" -Icon 'fas fa-user-secret' -Title 'CIPP - BEC Tool'))
+                        $CIPPLinksFormatted.add((Get-HuduLinkBlock -URL "$($CIPPURL)/identity/administration/users/user/bec?tenantFilter=$($Tenant.defaultDomainName)&userId=$($User.id)" -Icon 'fas fa-user-secret' -Title 'CIPP - BEC Tool'))
                     }
 
                     [System.Collections.Generic.List[PSCustomObject]]$UserLinksFormatted = @()
@@ -929,7 +929,7 @@ function Invoke-HuduExtensionSync {
                             foreach ($Status in $MatchingStatuses) {
                                 Write-Information "Processing Status for Device $($device.deviceName), Policy $($Policy.displayName)"
                                 # Filter out invalid statuses
-                                if ($Status.status -and $Status.status -ne 'unknown' -and $Status.status -ne $null) {
+                                if ($Status.status -and $Status.status -ne 'unknown' -and $null -ne $Status.status) {
                                     try {
                                         $LastReport = if ($Status.lastReportedDateTime) {
                                             (Get-Date $Status.lastReportedDateTime -Format 'yyyy-MM-dd HH:mm:ss')
