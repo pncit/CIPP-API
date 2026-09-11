@@ -2,6 +2,8 @@
 # More GitHub Actions for Azure: https://github.com/Azure/actions
 
 name: Build and deploy Powershell project to Azure Function App - cippkvupn
+# Deploys the SAME checkout to the main app and its offload (processor) app.
+# See the 'version lockstep' note on the cippkvupn-proc step below before editing.
 
 on:
   push:
@@ -27,4 +29,21 @@ jobs:
           app-name: 'cippkvupn'
           slot-name: 'Production'
           package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_96E4A9290D1D4F3DA01D74E0BE6ED0E1 }}
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_96E4A9290D1D4F3DA01D74E0BE6ED0E1 }}
+
+      # cippkvupn-proc is the offload/processor node for cippkvupn. CIPP only dispatches
+      # timers to an offload node when its version EXACTLY matches the main app's:
+      #   Modules/CIPPCore/Public/Get-CIPPTimerFunctions.ps1
+      #     $AvailableNodes = $Nodes | Where-Object { ... -and $_.Version -eq $MainFunctionVersion }
+      # On mismatch the node is silently dropped (no error) and BOTH apps fall back to
+      # running the processor timers, double-dispatching them against every tenant.
+      # So both apps must ship the same commit, in the same run. This step deploys the
+      # very same checkout as the step above - no second checkout, no rebuild.
+      - name: 'Run Azure Functions Action - offload node (cippkvupn-proc)'
+        uses: Azure/functions-action@c5060b3b8bb1ebbcb531abd00c822ecbaa8ea656 # v1.5.7
+        id: fa-proc
+        with:
+          app-name: 'cippkvupn-proc'
+          slot-name: 'Production'
+          package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_CIPPKVUPN_PROC }}
